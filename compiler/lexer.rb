@@ -1,10 +1,12 @@
 require "logger"
 require "pry"
 
-require "./helper"
+require_relative "./helper"
+require_relative "./exceptions"
 include StardustCompiler
 
 $logger = Logger.new(STDERR)
+$logger.level = Logger::DEBUG
 
 module StardustCompiler
 	class Lexer
@@ -21,8 +23,9 @@ module StardustCompiler
 					transition(current_state, next_char, current_token, input)
 
 				if new_state == :error
-					puts("Unexpected \"#{next_char || "EOF"}\" at position #{position}")
-					return
+					raise StardustCompiler::SyntaxError.new(
+						"Unexpected \"#{next_char || "EOF"}\" at position #{position}"
+					)
 				end
 
 				current_state = new_state
@@ -35,6 +38,11 @@ module StardustCompiler
 			# Final transition on EOF
 			new_tokens, characters_consumed, next_state =
 				transition(current_state, nil, current_token, input)
+			if next_state == :error
+				raise StardustCompiler::SyntaxError.new(
+					"Unexpected EOF after #{current_token}"
+				)
+			end
 			tokens.push(*new_tokens)
 			return tokens
 		end
@@ -45,15 +53,20 @@ module StardustCompiler
 			new_tokens = []
 			next_token_accumulator = nil
 
-			if next_char == " " && current_state != :start
-				new_tokens.push([current_state, current_token])
+			if next_char == " " && ![:start, :string_start].include?(current_state)
+				new_tokens << [current_state, current_token]
 				next_state = :start
+			elsif next_char == nil && current_state == :start
+				next_state = :eof
 			else
 				case current_state
 				when :start
 					if Helper::number?(next_char)
 						next_state = :integer
 						next_token_accumulator = next_char
+					elsif next_char == "\""
+						next_state = :string_start
+						next_token_accumulator = ""
 					end
 				when :integer
 					if Helper::number?(next_char)
@@ -69,7 +82,10 @@ module StardustCompiler
 							new_tokens << [:integer, current_token]
 							new_tokens << [:period, next_char]
 							next_state = :start
-						end	
+						end
+					elsif next_char == "'"
+						next_state = :integer_separator
+						next_token_accumulator = current_token + next_char
 					end
 				when :decimal
 					if Helper::number?(next_char)
@@ -77,18 +93,43 @@ module StardustCompiler
 						next_token_accumulator = current_token + next_char
 					elsif next_char == "."
 						next_state = :period
+						next_token_accumulator = next_char
 						new_tokens << [:decimal, current_token]
-						current_token = next_char
+					elsif next_char == "'"
+						next_state = :decimal_separator
+						next_token_accumulator = current_token + next_char
 					end
 				when :period
 					if [" ", "\n", nil].include?(next_char)
 						next_state = :start
 						new_tokens << [:period, current_token]
 					end
+				when :integer_separator
+					if Helper::number?(next_char)
+						next_state = :integer
+						next_token_accumulator = current_token + next_char
+					end
+				when :decimal_separator
+					if Helper::number?(next_char)
+						next_state = :decimal
+						next_token_accumulator = current_token + next_char
+					end
+				when :string_start
+					if next_char == "\""
+						next_state = :string
+						next_token_accumulator = current_token
+					else
+						next_token_accumulator = current_token + next_char
+						next_state = :string_start
+					end
+				when :string
+					if next_char == "."
+						next_state = :period
+						next_token_accumulator = next_char
+						new_tokens << [:string, current_token]
+					end
 				end
 			end
-
-			$logger.debug("#{current_state} - transitioning to #{next_state} on #{next_char}")
 			return new_tokens, characters_consumed, next_state, next_token_accumulator
 		end
 	end

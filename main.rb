@@ -1,6 +1,6 @@
 require "optparse"
 
-require "./lexer"
+require "./compiler/lexer"
 include StardustCompiler
 
 options = {}
