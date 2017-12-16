@@ -9,4 +9,8 @@ RSpec::describe(Lexer) do
 		tokens = Lexer.tokenize("")
 		expect(tokens).to(eq([]))
 	end
+
+	it "prevents starting a line with a period" do
+		expect() {Lexer.tokenize("123\n.")}.to(raise_error(StardustCompiler::SyntaxError))
+	end
 end

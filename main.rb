@@ -33,7 +33,11 @@ end
 print("Stardust> ")
 line = gets().chomp
 while line != nil
-	puts(Lexer.tokenize(line))
+	begin
+		puts(Lexer.tokenize(line))
+	rescue StardustCompiler::SyntaxError => e
+		puts(e)
+	end
 	print("Stardust> ")
 	line = gets().chomp
 end

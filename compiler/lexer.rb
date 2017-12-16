@@ -53,7 +53,7 @@ module StardustCompiler
 			new_tokens = []
 			next_token_accumulator = nil
 
-			if next_char == " " && ![:start, :string_start].include?(current_state)
+			if next_char == " " && ![:start, :string_start, :comment].include?(current_state)
 				new_tokens << [current_state, current_token]
 				next_state = :start
 			elsif next_char == nil && current_state == :start
@@ -61,43 +61,43 @@ module StardustCompiler
 			else
 				case current_state
 				when :start
+					next_token_accumulator = next_char
 					if Helper::number?(next_char)
 						next_state = :integer
-						next_token_accumulator = next_char
 					elsif next_char == "\""
 						next_state = :string_start
 						next_token_accumulator = ""
+					elsif next_char == "/"
+						next_state = :divide
 					end
-				when :integer
+				when :integer, :decimal
 					if Helper::number?(next_char)
-						next_state = :integer
+						next_state = current_state
 						next_token_accumulator = current_token + next_char
 					elsif next_char == "."
-						second_char = input.eof? ? nil : input.readchar
-						characters_consumed += 1
-						if Helper::number?(second_char)
-							next_token_accumulator = current_token + next_char + second_char
-							next_state = :decimal
-						elsif [" ", "\n", nil].include?(second_char)
-							new_tokens << [:integer, current_token]
-							new_tokens << [:period, next_char]
-							next_state = :start
+						if current_state == :integer
+							second_char = input.eof? ? nil : input.readchar
+							characters_consumed += 1
+							if Helper::number?(second_char)
+								next_token_accumulator = current_token + next_char + second_char
+								next_state = :decimal
+							elsif [" ", "\n", nil].include?(second_char)
+								new_tokens << [:integer, current_token]
+								new_tokens << [:period, next_char]
+								next_state = :start
+							end
+						elsif current_state == :decimal
+							next_state = :period
+							next_token_accumulator = next_char
+							new_tokens << [:decimal, current_token]
 						end
 					elsif next_char == "'"
-						next_state = :integer_separator
+						next_state = :"#{current_state}_separator"
 						next_token_accumulator = current_token + next_char
-					end
-				when :decimal
-					if Helper::number?(next_char)
-						next_state = :decimal
-						next_token_accumulator = current_token + next_char
-					elsif next_char == "."
-						next_state = :period
+					elsif next_char == "/"
+						new_tokens << [current_state, current_token]
+						next_state = :divide
 						next_token_accumulator = next_char
-						new_tokens << [:decimal, current_token]
-					elsif next_char == "'"
-						next_state = :decimal_separator
-						next_token_accumulator = current_token + next_char
 					end
 				when :period
 					if [" ", "\n", nil].include?(next_char)
@@ -127,6 +127,17 @@ module StardustCompiler
 						next_state = :period
 						next_token_accumulator = next_char
 						new_tokens << [:string, current_token]
+					end
+				when :divide
+					if next_char == "/"
+						next_state = :comment
+						next_token_accumulator = nil
+					end
+				when :comment
+					unless ["\n", nil].include?(next_char)
+						next_state = :comment
+					else
+						next_state = :start
 					end
 				end
 			end
