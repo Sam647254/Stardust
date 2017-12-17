@@ -27,6 +27,13 @@ RSpec::describe(Lexer) do
 			[:decimal, "123.456"], [:period, "."]]))
 	end
 
+	it "parses negative numbers" do
+		tokens = Lexer.tokenize("-1. -2.3. -1'234.567.")
+		expect(tokens).to(eq([[:minus, "-"], [:integer, "1"], [:period, "."],
+			[:minus, "-"], [:decimal, "2.3"], [:period, "."], [:minus, "-"],
+			[:decimal, "1'234.567"], [:period, "."]]))
+	end
+
 	it "parses numbers with digit separators" do
 		tokens = Lexer.tokenize("123'456.")
 		expect(tokens).to(eq([[:integer, "123'456"], [:period, "."]]))
@@ -42,8 +49,8 @@ RSpec::describe(Lexer) do
 	end
 
 	it "captures numbers without period" do
-		expect {Lexer.tokenize("123")}.to(raise_error(StardustCompiler::SyntaxError))
-		expect {Lexer.tokenize("123.456")}.to(raise_error(StardustCompiler::SyntaxError))
+		expect(Lexer.tokenize("123")).to(eq([[:integer, "123"]]))
+		expect(Lexer.tokenize("123.456")).to(eq([[:decimal, "123.456"]]))
 	end
 
 	it "captures numbers with consecutive separators" do

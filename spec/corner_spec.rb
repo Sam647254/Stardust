@@ -13,4 +13,11 @@ RSpec::describe(Lexer) do
 	it "prevents starting a line with a period" do
 		expect() {Lexer.tokenize("123\n.")}.to(raise_error(StardustCompiler::SyntaxError))
 	end
+
+	it "handles statments spanning more than one line" do
+		expect(Lexer.tokenize("Define x\nas number 3.")).to(eq([
+			[:define, "Define"], [:identifier, "x"], [:as, "as"],
+			[:number, "number"], [:integer, "3"], [:period, "."]
+		]))
+	end
 end
