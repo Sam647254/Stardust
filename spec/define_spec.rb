@@ -6,9 +6,9 @@ include StardustCompiler
 
 RSpec::describe(Lexer) do
 	it "parses number declarations" do
-		tokens = Lexer.tokenize("Define x as number 3.")
+		tokens = Lexer.tokenize("Define x as 3.")
 		expect(tokens).to(eq([[:define, "Define"], [:identifier, "x"],
-			[:as, "as"], [:number, "number"], [:integer, "3"], [:period, "."]]))
+			[:as, "as"], [:integer, "3"], [:period, "."]]))
 	end
 
 	it "parses variable declarations" do
@@ -18,9 +18,9 @@ RSpec::describe(Lexer) do
 	end
 
 	it "handles semi-case-sensitive identifiers" do
-		tokens = Lexer.tokenize("Define dEfine as string \"123\".")
+		tokens = Lexer.tokenize("Define dEfine as \"123\".")
 		expect(tokens).to(eq([[:define, "Define"], [:identifier, "dEfine"],
-			[:as, "as"], [:string, "string"], [:string_literal, "123"],
+			[:as, "as"], [:string_literal, "123"],
 			[:period, "."]]))
 	end
 end

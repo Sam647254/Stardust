@@ -15,17 +15,27 @@ module StardustCompiler
 		"as",
 		"define",
 		"function",
+		"if",
 		"main",
 		"number",
-		"string"
+		"otherwise",
+		"return",
+		"returning",
+		"set",
+		"string",
+		"to"
+	].to_set
+	BOOLEAN_LITERALS = [
+		"true",
+		"false"
 	].to_set
 
 	class Lexer
 		def self.tokenize(string)
 			input = StringIO.new(string)
-			current_state = :sentence_start
+			current_state = :line_start
 			position = 0
-			indentation_level = 0
+			current_indentation_level = 0
 			tokens = []
 			current_token = nil
 			repeat_character = false
@@ -34,8 +44,8 @@ module StardustCompiler
 				unless repeat_character
 					next_char = input.readchar
 				end
-				new_tokens, characters_consumed, new_state, next_token_accumulator, new_indentation_level, repeat_character,
-					error_reason = transition(current_state, indentation_level, next_char, current_token, input)
+				new_tokens, characters_consumed, new_state, next_token_accumulator, new_indentation_level,
+					repeat_character, error_reason = transition(current_state, current_indentation_level, next_char, current_token, input)
 				if new_state == :error
 					raise StardustCompiler::SyntaxError.new(
 						"Unexpected \"#{next_char || "EOF"}\" at position #{position}#{": #{error_reason}" unless error_reason.nil?}"
@@ -47,12 +57,13 @@ module StardustCompiler
 				tokens.push(*new_tokens)
 				position += characters_consumed
 				position += 1
-				indentation_level = new_indentation_level
+
+				current_indentation_level = new_indentation_level
 			end
 
 			# Final transition on EOF
 			new_tokens, characters_consumed, next_state, new_indentation_level, error_reason =
-				transition(current_state, indentation_level, nil, current_token, input)
+				transition(current_state, current_indentation_level, nil, current_token, input)
 			if next_state == :error
 				raise StardustCompiler::SyntaxError.new(
 					"Unexpected EOF after #{current_token}"
@@ -62,17 +73,17 @@ module StardustCompiler
 			return tokens
 		end
 
-		def self.transition(current_state, indentation_level, next_char, current_token, input)
+		def self.transition(current_state, current_indentation_level, next_char, current_token, input)
 			next_state = :error
 			error_reason = nil
 			characters_consumed = 0
 			new_tokens = []
 			next_token_accumulator = nil
-			new_indentation_level = indentation_level
+			new_indentation_level = current_indentation_level
 			repeat_character = false
 
 			if [" ", "\n", nil].include?(next_char) \
-				&& ![:start, :sentence_start, :string_start, :comment].include?(current_state)
+				&& ![:start, :line_start, :sentence_start, :string_start, :comment].include?(current_state)
 				if current_state == :identifier &&
 					Helper::lowercase?(current_token[1..-1]) && KEYWORDS.include?(current_token.downcase)
 					# Test for keyword
@@ -80,12 +91,38 @@ module StardustCompiler
 				else
 					new_tokens << [current_state, current_token]
 				end
-				next_state = :start
-			elsif next_char == nil && [:sentence_start, :start].include?(current_state)
+				next_state = next_char == "\n" ? :line_start : :start
+				if next_char == nil
+					current_indentation_level.times() do |n|
+						new_tokens << [:outdent, nil]
+					end
+				end
+			elsif next_char == nil && [:sentence_start, :start, :line_start].include?(current_state)
+				current_indentation_level.times() do |n|
+					new_tokens << [:outdent, nil]
+				end
 				next_state = :eof
 			else
 				case current_state
-				when :start, :sentence_start
+				when :start, :sentence_start, :line_start
+					if current_state == :line_start
+						new_indentation_level = 0
+						while next_char == "\t"
+							new_indentation_level += 1
+							if new_indentation_level > current_indentation_level
+								new_tokens << [:indent, nil]
+								next_state = :sentence_start
+								break
+							end
+							next_char = input.readchar
+							characters_consumed += 1
+						end
+						if new_indentation_level < current_indentation_level
+							(current_indentation_level - new_indentation_level).times() do |n|
+								new_tokens << [:outdent, nil]
+							end
+						end
+					end
 					next_token_accumulator = next_char
 					if Helper::number?(next_char)
 						next_state = :integer
@@ -94,6 +131,12 @@ module StardustCompiler
 						next_token_accumulator = ""
 					elsif !(operator = ["+", "-", "*", "/", "^"].index(next_char)).nil?
 						next_state = [:plus, :minus, :times, :divide, :exponent][operator]
+					elsif next_char == "<"
+						next_state = :left_angle_bracket
+						next_token_accumulator = next_char
+					elsif next_char == ">"
+						next_state = :right_angle_bracket
+						next_token_accumulator = next_char
 					elsif next_char == "("
 						new_tokens << [:open_parenthesis, next_char]
 						next_state = :start
@@ -122,7 +165,7 @@ module StardustCompiler
 							elsif [" ", "\n", nil].include?(second_char)
 								new_tokens << [:integer, current_token]
 								new_tokens << [:period, next_char]
-								next_state = :start
+								next_state = second_char == "\n" ? :line_start : :sentence_start
 							end
 						elsif current_state == :decimal
 							next_state = :period
@@ -142,7 +185,11 @@ module StardustCompiler
 					end
 				when :period
 					if [" ", "\n", nil].include?(next_char)
-						next_state = :sentence_start
+						if next_char == "\n"
+							next_state = :line_start
+						else
+							next_state = :sentence_start
+						end
 						new_tokens << [:period, current_token]
 					end
 				when :integer_separator
@@ -184,6 +231,9 @@ module StardustCompiler
 						when "."
 							next_token_accumulator = next_char
 							next_state = :period
+						when ":", ","
+							next_state = :space_or_punctuation
+							repeat_character = true
 						else
 							next_state = :start
 							repeat_character = true
@@ -216,6 +266,9 @@ module StardustCompiler
 						next_token_accumulator = next_char
 					when ":"
 						next_state = :colon
+						next_token_accumulator = next_char
+					when ","
+						next_state = :comma
 						next_token_accumulator = next_char
 					when " ", "\n"
 						next_state = :start
