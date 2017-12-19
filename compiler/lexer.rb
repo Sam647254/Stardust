@@ -11,18 +11,20 @@ $logger.level = Logger::DEBUG
 
 module StardustCompiler
 	KEYWORDS = [
-		"array",
 		"as",
 		"define",
+		"export",
+		"from",
 		"function",
 		"if",
+		"import",
+		"in",
 		"main",
-		"number",
+		"module",
 		"otherwise",
 		"return",
 		"returning",
 		"set",
-		"string",
 		"to"
 	].to_set
 	BOOLEAN_LITERALS = [
@@ -83,7 +85,8 @@ module StardustCompiler
 			repeat_character = false
 
 			if [" ", "\n", nil].include?(next_char) \
-				&& ![:start, :line_start, :sentence_start, :string_start, :comment].include?(current_state)
+				&& ![:start, :line_start, :sentence_start, :string_start, :comment,
+					:space_or_punctuation].include?(current_state)
 				if current_state == :identifier &&
 					Helper::lowercase?(current_token[1..-1]) && KEYWORDS.include?(current_token.downcase)
 					# Test for keyword
@@ -143,6 +146,8 @@ module StardustCompiler
 					elsif next_char == ")"
 						new_tokens << [:close_parenthesis, next_char]
 						next_state = :space_or_punctuation
+					elsif next_char == "\n"
+						next_state = :line_start
 					elsif Helper::letter?(next_char)
 						if current_state == :sentence_start && Helper::lowercase?(next_char)
 							error_reason = "should be capitalized"
@@ -182,6 +187,14 @@ module StardustCompiler
 					elsif Helper::valid_id_character?(next_char) && current_state == :integer
 						next_state = :identifier
 						next_token_accumulator = current_token + next_char
+					elsif next_char == ")"
+						new_tokens << [current_state, current_token]
+						new_tokens << [:close_parenthesis, next_char]
+						next_state = :space_or_punctuation
+					else
+						new_tokens << [current_state, current_token]
+						next_state = :space_or_punctuation
+						repeat_character = true
 					end
 				when :period
 					if [" ", "\n", nil].include?(next_char)
@@ -234,6 +247,9 @@ module StardustCompiler
 						when ":", ","
 							next_state = :space_or_punctuation
 							repeat_character = true
+						when ")"
+							new_tokens << [:close_parenthesis, ")"]
+							next_state = :space_or_punctuation
 						else
 							next_state = :start
 							repeat_character = true
@@ -270,6 +286,9 @@ module StardustCompiler
 					when ","
 						next_state = :comma
 						next_token_accumulator = next_char
+					when "("
+						new_tokens << [:open_parenthesis, next_char]
+						next_state = :start
 					when " ", "\n"
 						next_state = :start
 					end

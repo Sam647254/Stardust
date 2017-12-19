@@ -17,7 +17,7 @@ RSpec::describe(Lexer) do
 	it "handles statments spanning more than one line" do
 		expect(Lexer.tokenize("Define x\nas number 3.")).to(eq([
 			[:define, "Define"], [:identifier, "x"], [:as, "as"],
-			[:number, "number"], [:integer, "3"], [:period, "."]
+			[:identifier, "number"], [:integer, "3"], [:period, "."]
 		]))
 	end
 end
